@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Monitor Body with Cutout Screen -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,24h32c2.2,0,4,1.8,4,4v44c0,2.2-1.8,4-4,4H38c-2.2,0-4-1.8-4-4V28C34,25.8,35.8,24,38,24z M38,68h32V28H38V68z"/>
+    <!-- Stand -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M51,76h6v4h-6z M46,80h16v3H46z"/>
+    <!-- Projection Symbol (Cast arcs) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,65v3h3C45,66.3,43.7,65,42,65z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,60v2c3.3,0,6,2.7,6,6h2C50,63.6,46.4,60,42,60z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,55v2c6.1,0,11,4.9,11,11h2C55,58.9,49.1,55,42,55z"/>
+</vector>
