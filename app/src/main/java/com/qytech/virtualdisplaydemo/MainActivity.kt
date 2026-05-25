@@ -64,8 +64,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation3.runtime.NavEntry
@@ -355,10 +357,15 @@ fun MainScreen(projectionService: ProjectionService?) {
                 contentAlignment = Alignment.CenterStart // Dock to the left
             ) {
                 // Large Device Frame
+                var previewSize by remember { mutableStateOf(IntSize.Zero) }
+                
                 Surface(
                     modifier = Modifier
                         .fillMaxHeight(1f) // Vertical Stretch
                         .aspectRatio(9f / 16f) // Maintain Phone Shape
+                        .onGloballyPositioned { coordinates ->
+                            previewSize = coordinates.size
+                        }
                         .border(
                             width = 1.dp, // Hairline border
                             color = Color(0xFF333333),
@@ -381,6 +388,16 @@ fun MainScreen(projectionService: ProjectionService?) {
                                     heightVal,
                                     densityDpi
                                 )
+                            },
+                            onTouch = { event ->
+                                if (previewSize.width > 0 && previewSize.height > 0) {
+                                    // Map touch coordinates to 720x1280
+                                    val mappedX = (event.x / previewSize.width) * 720f
+                                    val mappedY = (event.y / previewSize.height) * 1280f
+                                    
+                                    event.setLocation(mappedX, mappedY)
+                                    projectionService?.injectEvent(event)
+                                }
                             }
                         )
                     } else {

@@ -5,16 +5,20 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.hardware.input.InputManager
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import android.view.InputEvent
+import android.view.MotionEvent
 import android.view.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -227,6 +231,25 @@ class ProjectionService : Service() {
             Log.d("ProjectionService", "Launched $packageName on display $displayId")
         } catch (e: Exception) {
             Log.e("ProjectionService", "Failed to launch app on virtual display", e)
+        }
+    }
+
+    fun injectEvent(event: MotionEvent) {
+        val displayId = virtualDisplay?.display?.displayId ?: return
+
+        try {
+            // MotionEvent.setDisplayId is a hidden API. We use reflection.
+            val setDisplayIdMethod = MotionEvent::class.java.getMethod("setDisplayId", Int::class.java)
+            setDisplayIdMethod.invoke(event, displayId)
+
+            // InputManager.injectInputEvent is a system API.
+            val im = getSystemService(Context.INPUT_SERVICE) as InputManager
+            val injectInputEventMethod = im.javaClass.getMethod("injectInputEvent", InputEvent::class.java, Int::class.java)
+
+            // INJECT_INPUT_EVENT_MODE_ASYNC = 0
+            injectInputEventMethod.invoke(im, event, 0)
+        } catch (e: Exception) {
+            Log.e("ProjectionService", "Failed to inject event into display $displayId", e)
         }
     }
 
