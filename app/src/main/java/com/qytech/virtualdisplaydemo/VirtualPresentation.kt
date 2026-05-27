@@ -61,11 +61,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class PortraitPresentation(
+class VirtualPresentation(
     outerContext: Context,
     display: Display
-) : Presentation(outerContext, display), LifecycleOwner, ViewModelStoreOwner,
-    SavedStateRegistryOwner {
+) : Presentation(outerContext, display), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
 
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
@@ -79,14 +78,14 @@ class PortraitPresentation(
         super.onCreate(savedInstanceState)
         savedStateRegistryController.performRestore(savedInstanceState)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
-
+        
         val composeView = ComposeView(context)
         setContentView(composeView)
 
         composeView.setViewTreeLifecycleOwner(this)
         composeView.setViewTreeViewModelStoreOwner(this)
         composeView.setViewTreeSavedStateRegistryOwner(this)
-
+        
         composeView.setContent {
             VirtualDisplayDemoTheme {
                 DashboardContent()
@@ -115,22 +114,8 @@ class PortraitPresentation(
 
 @Composable
 fun DashboardContent() {
-    var currentTime by remember {
-        mutableStateOf(
-            SimpleDateFormat(
-                "HH:mm",
-                Locale.getDefault()
-            ).format(Date())
-        )
-    }
-    var currentDate by remember {
-        mutableStateOf(
-            SimpleDateFormat(
-                "EEEE, MMMM d",
-                Locale.getDefault()
-            ).format(Date())
-        )
-    }
+    var currentTime by remember { mutableStateOf(SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())) }
+    var currentDate by remember { mutableStateOf(SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(Date())) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -152,15 +137,15 @@ fun DashboardContent() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Header: Clock & Date
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
                 text = currentTime,
                 style = MaterialTheme.typography.displayLarge.copy(
-                    fontSize = 80.sp,
+                    fontSize = 64.sp,
                     fontWeight = FontWeight.Light,
                     letterSpacing = 2.sp
                 ),
@@ -168,11 +153,11 @@ fun DashboardContent() {
             )
             Text(
                 text = currentDate,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
                 color = Color.White.copy(alpha = 0.7f)
             )
 
-            Spacer(modifier = Modifier.height(64.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             // Connection Badge
             Surface(
@@ -180,73 +165,46 @@ fun DashboardContent() {
                 shape = RoundedCornerShape(24.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Box(modifier = Modifier
-                        .size(8.dp)
-                        .background(Color.Green, CircleShape))
+                    Box(modifier = Modifier.size(6.dp).background(Color.Green, CircleShape))
                     Text(
-                        text = "Secondary Display Active",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White
+                        text = "VIRTUAL SCREEN ACTIVE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        fontSize = 10.sp
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             // System Status Section
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f)),
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(20.dp)
             ) {
-                Column(modifier = Modifier.padding(24.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "System Status",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
+                        text = "SYSTEM STATUS",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.8f),
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    StatusItem(
-                        icon = Icons.Rounded.Memory,
-                        label = "Memory",
-                        value = "4.2 GB / 8 GB"
-                    )
-                    HorizontalDivider(
-                        color = Color.White.copy(alpha = 0.1f),
-                        modifier = Modifier.padding(vertical = 12.dp)
-                    )
-                    StatusItem(
-                        icon = Icons.Rounded.SettingsInputComponent,
-                        label = "CPU Usage",
-                        value = "12%"
-                    )
-                    HorizontalDivider(
-                        color = Color.White.copy(alpha = 0.1f),
-                        modifier = Modifier.padding(vertical = 12.dp)
-                    )
-                    StatusItem(
-                        icon = Icons.Rounded.NetworkCheck,
-                        label = "Network",
-                        value = "Connected"
-                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    StatusItem(icon = Icons.Rounded.Memory, label = "Memory", value = "4.2 / 8 GB")
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f), modifier = Modifier.padding(vertical = 8.dp))
+                    StatusItem(icon = Icons.Rounded.SettingsInputComponent, label = "CPU Load", value = "12%")
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f), modifier = Modifier.padding(vertical = 8.dp))
+                    StatusItem(icon = Icons.Rounded.NetworkCheck, label = "Link", value = "Optimal")
                 }
             }
-
+            
             Spacer(modifier = Modifier.weight(1f))
-
-            Icon(
-                imageVector = Icons.Rounded.Smartphone,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.2f),
-                modifier = Modifier.size(48.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -259,25 +217,11 @@ fun StatusItem(icon: ImageVector, label: String, value: String) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = Color.Cyan,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.6f)
-            )
+            Icon(icon, contentDescription = null, tint = Color.Cyan.copy(alpha = 0.8f), modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = label, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
         }
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White,
-            fontWeight = FontWeight.SemiBold
-        )
+        Text(text = value, style = MaterialTheme.typography.bodySmall, color = Color.White, fontWeight = FontWeight.Medium, fontSize = 11.sp)
     }
 }
 

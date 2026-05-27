@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.util.DisplayMetrics
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -100,7 +101,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Fix: Host window gives up focus to allow Virtual Display to take IME
+        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        
         enableEdgeToEdge()
+
         setContent {
             VirtualDisplayDemoTheme {
                 val backStack = remember { mutableStateListOf<Any>(MainRoute) }
@@ -140,6 +146,7 @@ fun MainScreen(projectionService: ProjectionService?) {
     val isProjecting = projectionService?.isProjecting == true
     val isDashboardShowing = projectionService?.isDashboardShowing == true
 
+    var isLandscapeVirtual by remember { mutableStateOf(false) }
     var installedApps by remember { mutableStateOf(listOf<AppInfo>()) }
 
     LaunchedEffect(Unit) {
@@ -239,6 +246,26 @@ fun MainScreen(projectionService: ProjectionService?) {
                                 text = if (isProjecting) "ACTIVE" else "READY",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (isProjecting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        
+                        // Orientation Switcher
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().clickable { 
+                                isLandscapeVirtual = !isLandscapeVirtual
+                                if (isProjecting) {
+                                    Toast.makeText(context, "Restart projection to apply orientation", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        ) {
+                            Text("MODE: ", style = MaterialTheme.typography.labelSmall, fontSize = 9.sp)
+                            Text(
+                                if (isLandscapeVirtual) "LANDSCAPE" else "PORTRAIT",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.secondary,
+                                fontSize = 9.sp
                             )
                         }
 
@@ -362,7 +389,7 @@ fun MainScreen(projectionService: ProjectionService?) {
                 Surface(
                     modifier = Modifier
                         .fillMaxHeight(1f) // Vertical Stretch
-                        .aspectRatio(9f / 16f) // Maintain Phone Shape
+                        .aspectRatio(if (isLandscapeVirtual) 16f/9f else 9f / 16f) // Dynamic aspect ratio
                         .onGloballyPositioned { coordinates ->
                             previewSize = coordinates.size
                         }
@@ -378,8 +405,8 @@ fun MainScreen(projectionService: ProjectionService?) {
                         VirtualDisplayPreview(
                             modifier = Modifier.fillMaxSize(),
                             onSurfaceCreated = { surface ->
-                                val widthVal = 720
-                                val heightVal = 1280
+                                val widthVal = if (isLandscapeVirtual) 1280 else 720
+                                val heightVal = if (isLandscapeVirtual) 720 else 1280
                                 val densityDpi = DisplayMetrics.DENSITY_XHIGH
 
                                 projectionService?.createVirtualDisplay(
@@ -391,9 +418,12 @@ fun MainScreen(projectionService: ProjectionService?) {
                             },
                             onTouch = { event ->
                                 if (previewSize.width > 0 && previewSize.height > 0) {
-                                    // Map touch coordinates to 720x1280
-                                    val mappedX = (event.x / previewSize.width) * 720f
-                                    val mappedY = (event.y / previewSize.height) * 1280f
+                                    // Map touch coordinates to dynamic resolution
+                                    val virtWidth = if (isLandscapeVirtual) 1280f else 720f
+                                    val virtHeight = if (isLandscapeVirtual) 720f else 1280f
+                                    
+                                    val mappedX = (event.x / previewSize.width) * virtWidth
+                                    val mappedY = (event.y / previewSize.height) * virtHeight
                                     
                                     event.setLocation(mappedX, mappedY)
                                     projectionService?.injectEvent(event)

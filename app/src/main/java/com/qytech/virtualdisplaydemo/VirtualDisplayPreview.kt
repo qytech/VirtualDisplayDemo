@@ -18,9 +18,11 @@ fun VirtualDisplayPreview(
     AndroidView(
         factory = { context ->
             TextureView(context).apply {
-                setOnTouchListener { _, event ->
-                    // Capture local touch event and pass to handler
+                setOnTouchListener { v, event ->
+                    // 必须通过 obtain 复制一份事件，因为原始 event 会被 View 系统立刻回收
+                    // 这里的 obtain 会在 ProjectionService.injectEvent 中被 recycle
                     onTouch(MotionEvent.obtain(event))
+                    v.performClick()
                     true
                 }
                 surfaceTextureListener = object : TextureView.SurfaceTextureListener {
@@ -29,7 +31,6 @@ fun VirtualDisplayPreview(
                         width: Int,
                         height: Int
                     ) {
-                        // 关键修复：强制设置缓冲区的宽高为虚拟分辨率，防止画面偏移或截断
                         surfaceTexture.setDefaultBufferSize(720, 1280)
                         onSurfaceCreated(Surface(surfaceTexture))
                     }

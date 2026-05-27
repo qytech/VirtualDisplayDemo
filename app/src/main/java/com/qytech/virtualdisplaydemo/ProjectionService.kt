@@ -24,13 +24,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import java.lang.reflect.Method
 
 class ProjectionService : Service() {
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
-    private var presentation: PortraitPresentation? = null
+    private var presentation: VirtualPresentation? = null
     private val binder = ProjectionBinder()
+    
+    // 异步执行注入，避免阻塞主线程
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // 缓存反射方法以提高性能
+    private var setDisplayIdMethod: Method? = null
+    private var injectInputEventMethod: Method? = null
+    private var inputManager: InputManager? = null
 
     var isProjecting by mutableStateOf(false)
         private set
@@ -40,6 +53,21 @@ class ProjectionService : Service() {
 
     inner class ProjectionBinder : Binder() {
         fun getService(): ProjectionService = this@ProjectionService
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        try {
+            setDisplayIdMethod = MotionEvent::class.java.getMethod("setDisplayId", Int::class.java)
+            inputManager = getSystemService(Context.INPUT_SERVICE) as InputManager
+            injectInputEventMethod = inputManager?.javaClass?.getMethod(
+                "injectInputEvent", 
+                InputEvent::class.java, 
+                Int::class.java
+            )
+        } catch (e: Exception) {
+            Log.e("ProjectionService", "Failed to cache reflection methods", e)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -122,21 +150,32 @@ class ProjectionService : Service() {
     fun createVirtualDisplay(surface: Surface, width: Int, height: Int, densityDpi: Int) {
         if (mediaProjection == null) return
 
-        // Fix: Don't recreate VirtualDisplay if it already exists, just update surface
+        // If resolution changed, we must release and recreate the VirtualDisplay
         if (virtualDisplay != null) {
-            Log.d("ProjectionService", "VirtualDisplay already exists, updating surface")
-            virtualDisplay?.surface = surface
-            // Re-apply rotation lock on new surface if needed
-            virtualDisplay?.display?.let { freezeRotation(it.displayId) }
-            return
+            val currentDisplay = virtualDisplay?.display
+            if (currentDisplay?.width != width || currentDisplay?.height != height) {
+                Log.d("ProjectionService", "Resolution changed from ${currentDisplay?.width}x${currentDisplay?.height} to ${width}x${height}. Recreating...")
+                presentation?.dismiss()
+                presentation = null
+                virtualDisplay?.release()
+                virtualDisplay = null
+            } else {
+                Log.d("ProjectionService", "Updating VirtualDisplay surface")
+                virtualDisplay?.surface = surface
+                virtualDisplay?.display?.let { freezeRotation(it.displayId) }
+                return
+            }
         }
 
-        Log.d("ProjectionService", "Creating new VirtualDisplay: ${width}x${height} @ $densityDpi")
+        Log.d("ProjectionService", "Creating VirtualDisplay: ${width}x${height} @ $densityDpi")
 
-        // FLAG_OWN_ORIENTATION = 1 << 11 (2048)
+        // 2 (PRESENTATION) | 1 (PUBLIC) | 64 (SUPPORTS_TOUCH) | 512 (SYSTEM_DECORATIONS) | 1024 (TRUSTED)
         val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION or
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or
-                (1 shl 11)
+                (1 shl 6) or  // 64 (SUPPORTS_TOUCH)
+                (1 shl 9) or  // 512 (SYSTEM_DECORATIONS)
+                (1 shl 10) or // 1024 (TRUSTED)
+                (1 shl 11)    // 2048 (OWN_ORIENTATION)
 
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "VirtualDisplayDemo",
@@ -150,7 +189,6 @@ class ProjectionService : Service() {
         )
 
         virtualDisplay?.display?.let { display ->
-            Log.d("ProjectionService", "VirtualDisplay created. DisplayId: ${display.displayId}")
             freezeRotation(display.displayId)
             showDashboard()
         }
@@ -166,8 +204,7 @@ class ProjectionService : Service() {
             val asInterface = iWindowManagerStub.getMethod("asInterface", IBinder::class.java)
             val iWindowManager = asInterface.invoke(null, windowManagerBinder)
 
-            // Strengthen Portrait Lock: Set Fixed to User Rotation
-            // FIXED_TO_USER_ROTATION_ENABLED = 2
+            // 1. 强制设置竖屏锁定
             try {
                 val setFixedToUserRotation = iWindowManager.javaClass.getMethod(
                     "setFixedToUserRotation",
@@ -175,32 +212,74 @@ class ProjectionService : Service() {
                     Int::class.java
                 )
                 setFixedToUserRotation.invoke(iWindowManager, displayId, 2)
-                Log.d("ProjectionService", "Set FixedToUserRotation ENABLED for display $displayId")
             } catch (e: Exception) {
-                Log.w("ProjectionService", "setFixedToUserRotation not available or failed", e)
+                Log.w("ProjectionService", "setFixedToUserRotation failed", e)
             }
 
+            // 2. 冻结旋转
             val freezeDisplayRotation = iWindowManager.javaClass.getMethod(
                 "freezeDisplayRotation",
                 Int::class.java,
                 Int::class.java
             )
-            freezeDisplayRotation.invoke(iWindowManager, displayId, 0) // Surface.ROTATION_0
+            freezeDisplayRotation.invoke(iWindowManager, displayId, 0)
 
-            Log.d(
-                "ProjectionService",
-                "Successfully frozen display $displayId in Portrait (ROTATION_0)"
-            )
+            // 3. 开启副屏系统装饰
+            try {
+                val setShouldShowSystemDecors = iWindowManager.javaClass.getMethod(
+                    "setShouldShowSystemDecors",
+                    Int::class.java,
+                    Boolean::class.java
+                )
+                setShouldShowSystemDecors.invoke(iWindowManager, displayId, true)
+            } catch (e: Exception) {
+                Log.w("ProjectionService", "setShouldShowSystemDecors failed, ignoring...")
+            }
+
+            // 4. 关键修复：兼容新旧版本的 IME 策略
+            try {
+                // 优先尝试旧版 setShouldShowIme
+                val setShouldShowIme = iWindowManager.javaClass.getMethod(
+                    "setShouldShowIme",
+                    Int::class.java,
+                    Boolean::class.java
+                )
+                setShouldShowIme.invoke(iWindowManager, displayId, true)
+                Log.d("ProjectionService", "Enabled IME via setShouldShowIme")
+            } catch (e: Exception) {
+                try {
+                    // 尝试新版 setDisplayImePolicy (0 = SHOW, 1 = HIDE)
+                    val setDisplayImePolicy = iWindowManager.javaClass.getMethod(
+                        "setDisplayImePolicy",
+                        Int::class.java,
+                        Int::class.java
+                    )
+                    setDisplayImePolicy.invoke(iWindowManager, displayId, 0)
+                    Log.d("ProjectionService", "Enabled IME via setDisplayImePolicy")
+                } catch (e2: Exception) {
+                    Log.e("ProjectionService", "All IME activation methods failed", e2)
+                }
+            }
+
+            // 5. 显式请求副屏获取焦点
+            try {
+                val setFocusedDisplay = iWindowManager.javaClass.getMethod("setFocusedDisplay", Int::class.java)
+                setFocusedDisplay.invoke(iWindowManager, displayId)
+                Log.d("ProjectionService", "Set focus to display $displayId")
+            } catch (e: Exception) {
+                Log.w("ProjectionService", "setFocusedDisplay not available")
+            }
+
         } catch (e: Exception) {
-            Log.e("ProjectionService", "Failed to freeze display rotation via reflection", e)
+            Log.e("ProjectionService", "Failed to configure window manager", e)
         }
     }
 
     fun showDashboard() {
         val display = virtualDisplay?.display ?: return
         if (presentation == null) {
-            freezeRotation(display.displayId) // Ensure rotation is still frozen
-            presentation = PortraitPresentation(this, display)
+            freezeRotation(display.displayId)
+            presentation = VirtualPresentation(this, display)
             presentation?.show()
             isDashboardShowing = true
         }
@@ -216,40 +295,40 @@ class ProjectionService : Service() {
         val displayId = virtualDisplay?.display?.displayId ?: return
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName) ?: return
 
-        freezeRotation(displayId) // Ensure rotation is frozen before launching
+        freezeRotation(displayId)
         hideDashboard()
 
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
 
         val options = ActivityOptions.makeBasic().apply {
-            // This API requires system signature or special permissions
             launchDisplayId = displayId
         }
 
         try {
             startActivity(launchIntent, options.toBundle())
-            Log.d("ProjectionService", "Launched $packageName on display $displayId")
         } catch (e: Exception) {
-            Log.e("ProjectionService", "Failed to launch app on virtual display", e)
+            Log.e("ProjectionService", "Failed to launch app", e)
         }
     }
 
     fun injectEvent(event: MotionEvent) {
         val displayId = virtualDisplay?.display?.displayId ?: return
+        val im = inputManager ?: return
+        val injectMethod = injectInputEventMethod ?: return
+        val setIdMethod = setDisplayIdMethod ?: return
 
-        try {
-            // MotionEvent.setDisplayId is a hidden API. We use reflection.
-            val setDisplayIdMethod = MotionEvent::class.java.getMethod("setDisplayId", Int::class.java)
-            setDisplayIdMethod.invoke(event, displayId)
-
-            // InputManager.injectInputEvent is a system API.
-            val im = getSystemService(Context.INPUT_SERVICE) as InputManager
-            val injectInputEventMethod = im.javaClass.getMethod("injectInputEvent", InputEvent::class.java, Int::class.java)
-
-            // INJECT_INPUT_EVENT_MODE_ASYNC = 0
-            injectInputEventMethod.invoke(im, event, 0)
-        } catch (e: Exception) {
-            Log.e("ProjectionService", "Failed to inject event into display $displayId", e)
+        // 在 IO 线程执行注入，并在完成后回收 event
+        serviceScope.launch {
+            try {
+                setIdMethod.invoke(event, displayId)
+                // INJECT_INPUT_EVENT_MODE_ASYNC = 0
+                injectMethod.invoke(im, event, 0)
+            } catch (e: Exception) {
+                Log.e("ProjectionService", "Injection failed", e)
+            } finally {
+                // 必须回收，否则会造成内存泄漏和事件队列阻塞
+                event.recycle()
+            }
         }
     }
 
