@@ -28,7 +28,16 @@
 ## 🚀 快速开始
 
 ### 1. 配置签名
-将系统签名文件命名为 `SystemSignature.jks` 并放置在项目根目录下。在 `app/build.gradle.kts` 中确认签名配置已正确链接。
+为了安全起见，签名信息不建议直接写在脚本中。请在项目根目录的 `local.properties` 文件中添加以下配置，并指定您的 `.jks` 文件路径：
+
+```properties
+signing.storeFile=SystemSignature.jks
+signing.storePassword=your_password
+signing.keyAlias=your_alias
+signing.keyPassword=your_password
+```
+
+确认您的系统签名文件已放置在指定路径。项目已配置为自动读取这些属性进行签名。
 
 ### 2. 使用步骤
 1.  **启动投屏**：点击左侧“START”按钮，授权屏幕捕捉。

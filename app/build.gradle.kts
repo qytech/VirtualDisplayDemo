@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -20,11 +22,18 @@ android {
     }
 
     signingConfigs {
+        val properties = Properties()
+        val propertiesFile = rootProject.file("local.properties")
+        if (propertiesFile.exists()) {
+            properties.load(propertiesFile.inputStream())
+        }
+
         create("system") {
-            storeFile = rootProject.file("SystemSignature.jks")
-            storePassword = "qytech1688"
-            keyAlias = "qytech"
-            keyPassword = "qytech1688"
+            val storeFilePath = properties.getProperty("signing.storeFile")
+            storeFile = if (storeFilePath != null) rootProject.file(storeFilePath) else null
+            storePassword = properties.getProperty("signing.storePassword")
+            keyAlias = properties.getProperty("signing.keyAlias")
+            keyPassword = properties.getProperty("signing.keyPassword")
         }
     }
 

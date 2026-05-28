@@ -5,6 +5,7 @@
 .DS_Store
 /build
 /captures
+*.jks
 .externalNativeBuild
 .cxx
 local.properties
