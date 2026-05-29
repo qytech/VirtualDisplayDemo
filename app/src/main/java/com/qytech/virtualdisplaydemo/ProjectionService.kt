@@ -182,10 +182,11 @@ class ProjectionService : Service() {
             }
         }
 
-        // 2 (PRESENTATION) | 1 (PUBLIC) | 64 (SUPPORTS_TOUCH) | 512 (SYSTEM_DECORATIONS) | 1024 (TRUSTED) | 2048 (OWN_ORIENTATION)
+        // 移除 1024 (TRUSTED) 以隐藏系统导航栏，因为该标志是显示系统装饰的必要条件
+        // 2 (PRESENTATION) | 1 (PUBLIC) | 8 (OWN_CONTENT_ONLY) | 64 (SUPPORTS_TOUCH) | 2048 (OWN_ORIENTATION)
         val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION or
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or
-                (1 shl 6) or (1 shl 9) or (1 shl 10) or (1 shl 11)
+                (1 shl 3) or (1 shl 6) or (1 shl 11)
 
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "VirtualDisplayDemo", width, height, densityDpi, flags, surface, null, null
@@ -205,10 +206,10 @@ class ProjectionService : Service() {
                 setFixedToUserRotationMethod?.invoke(iWindowManager, displayId, 2)
                 freezeDisplayRotationMethod?.invoke(iWindowManager, displayId, 0)
 
-                // 2. 开启系统装饰
-                setShouldShowSystemDecorsMethod?.invoke(iWindowManager, displayId, true)
+                // 2. 显式禁用系统装饰（隐藏副屏导航栏和状态栏）
+                setShouldShowSystemDecorsMethod?.invoke(iWindowManager, displayId, false)
 
-                // 3. 启用 IME
+                // 3. 启用 IME (即使没有装饰也可以开启 IME)
                 if (setShouldShowImeMethod != null) {
                     setShouldShowImeMethod?.invoke(iWindowManager, displayId, true)
                 } else {
